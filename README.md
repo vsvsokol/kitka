@@ -10,7 +10,7 @@ next build.
 
 ```toml
 [build-dependencies]
-kit = { path = "../kit" }  # or { git = "https://github.com/<user>/kit" } once it's on GitHub
+kit = { path = "../kit" }  # or { git = "https://github.com/vsvsokol/kit" } once it's on GitHub
 slint-build = "1.18"
 ```
 
