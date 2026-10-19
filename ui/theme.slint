@@ -1,0 +1,33 @@
+// Visual language carried over from the C# app (and AlbumForge before it): near-black ground,
+// one accent color, monospace everything. Borders are solid throughout; dashed is reserved for
+// empty fields you can type in, so "editable" reads at a glance.
+
+export global Theme {
+    in property <bool> light;
+    /// Set by Rust: the album's color (darkened on the light theme), or the theme's own.
+    in property <color> accent: light ? #1f5fbf : #6aafff;
+    in property <string> mono: "Consolas";
+    /// Text size from settings: small, standard or big.
+    in property <float> scale: 1;
+
+    out property <color> bg: light ? #f4f4f0 : #050508;
+    out property <color> text: light ? #14161a : #f9fafb;
+    out property <color> muted: light ? #5f6672 : #7d8494;
+    out property <color> danger: light ? #b3261e : #ff6a6a;
+    out property <color> ok: light ? #1e7a4d : #6affa8;
+    out property <color> line: accent.with-alpha(light ? 0.35 : 0.30);
+    out property <color> hairline: accent.with-alpha(light ? 0.15 : 0.12);
+    out property <color> hover-wash: accent.with-alpha(0.08);
+    out property <color> playing-wash: accent.with-alpha(light ? 0.07 : 0.06);
+    out property <color> scrim: light ? #14161a8c : #000000f2;
+    out property <brush> menu-glow: @linear-gradient(135deg, accent.with-alpha(light ? 0.19 : 0.22) 0%, accent.with-alpha(0) 75%);
+    /// Dark text on a tag's color.
+    out property <color> ink: #050508;
+
+    // Three text tiers: main (buttons), secondary (names, values), additional (hints, notes, status).
+    out property <length> fs-main: 17px * scale;
+    out property <length> fs-secondary: 15px * scale;
+    out property <length> fs-additional: 13px * scale;
+    out property <length> fs-head: 20px * scale;
+    out property <length> fs-head-lg: 22px * scale;
+}

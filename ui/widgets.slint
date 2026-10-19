@@ -1,0 +1,656 @@
+// The app's own controls, in its visual language (see theme.slint). Slint's standard widgets have
+// their own look, so only plain elements are used here.
+
+import { Theme } from "theme.slint";
+
+/// Tooltip body in the app's style.
+export component TipBox inherits Rectangle {
+    in property <string> text;
+    background: Theme.bg;
+    border-width: 1px;
+    border-color: Theme.accent;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.fs-additional;
+        }
+    }
+}
+
+/// A 1px dashed outline. Slint has no dashed borders, so it is drawn as short segments.
+export component Dashed inherits Rectangle {
+    in property <color> stroke;
+    property <int> nx: Math.max(1, Math.floor(self.width / 7px));
+    property <int> ny: Math.max(1, Math.floor(self.height / 7px));
+    for i in root.nx: Rectangle {
+        x: i * 7px;
+        y: 0px;
+        width: Math.min(4px, root.width - self.x);
+        height: 1px;
+        background: root.stroke;
+    }
+    for i in root.nx: Rectangle {
+        x: i * 7px;
+        y: root.height - 1px;
+        width: Math.min(4px, root.width - self.x);
+        height: 1px;
+        background: root.stroke;
+    }
+    for i in root.ny: Rectangle {
+        x: 0px;
+        y: i * 7px;
+        width: 1px;
+        height: Math.min(4px, root.height - self.y);
+        background: root.stroke;
+    }
+    for i in root.ny: Rectangle {
+        x: root.width - 1px;
+        y: i * 7px;
+        width: 1px;
+        height: Math.min(4px, root.height - self.y);
+        background: root.stroke;
+    }
+}
+
+export component Btn inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> primary;
+    in property <bool> danger;
+    /// Compact, fixed height: glyphs that fall back to another font would otherwise size it differently.
+    in property <bool> icon;
+    in property <string> tip;
+    /// A typeface other than the app's, to show it.
+    in property <string> family;
+    callback clicked();
+
+    property <color> fg: root.danger ? Theme.danger : Theme.accent;
+    property <bool> hot: touch.has-hover && root.enabled;
+    min-height: root.icon ? 30px : 0px;
+    min-width: root.icon ? 30px : 0px;
+    background: root.hot ? Theme.hover-wash : Theme.bg;
+    border-width: 1px;
+    border-color: root.fg;
+    // A slow pulse while hovered, like the C# app.
+    opacity: !root.enabled ? 0.3 : root.hot ? 0.875 + 0.125 * Math.cos(animation-tick() / 1s * 360deg) : 1;
+    animate background { duration: 300ms; }
+
+    HorizontalLayout {
+        padding-left: root.icon ? 7px : 10px;
+        padding-right: root.icon ? 7px : 10px;
+        padding-top: root.icon ? 0px : 5px;
+        padding-bottom: root.icon ? 0px : 5px;
+        Text {
+            text: root.text;
+            color: root.hot && !root.danger ? Theme.text : root.fg;
+            font-family: root.family;
+            font-size: Theme.fs-main;
+            font-weight: root.primary ? 700 : 400;
+            letter-spacing: root.icon ? 0px : 1px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+
+    if root.tip != "": Tooltip {
+        TipBox { text: root.tip; }
+    }
+}
+
+/// ⌜text⌟, with the corners drawn as lines: monospace fonts lack those glyphs, and Slint's font
+/// fallback doesn't always find them.
+export component Bracketed inherits HorizontalLayout {
+    in property <string> text;
+    in property <color> color: Theme.accent;
+    in property <length> font-size: Theme.fs-head;
+    in property <int> font-weight: 400;
+    spacing: 5px;
+    Rectangle {
+        width: 7px;
+        Rectangle {
+            y: parent.height * 0.2;
+            height: 1px;
+            background: root.color;
+        }
+        Rectangle {
+            x: 0px;
+            y: parent.height * 0.2;
+            width: 1px;
+            height: 7px;
+            background: root.color;
+        }
+    }
+    Text {
+        text: root.text;
+        color: root.color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        letter-spacing: 3px;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        width: 7px;
+        Rectangle {
+            y: parent.height * 0.8 - 1px;
+            height: 1px;
+            background: root.color;
+        }
+        Rectangle {
+            x: parent.width - 1px;
+            y: parent.height * 0.8 - 7px;
+            width: 1px;
+            height: 7px;
+            background: root.color;
+        }
+    }
+}
+
+/// Header tab: the inactive view is dimmed.
+export component TabBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    horizontal-stretch: 0;
+    opacity: root.active ? 1 : 0.35;
+    HorizontalLayout {
+        padding-right: 14px;
+        alignment: start;
+        Bracketed {
+            text: root.text;
+            font-size: Theme.fs-head-lg;
+            font-weight: 700;
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// One-line text field. Dashed while empty ("you can type here"), solid once filled.
+export component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <bool> small;
+    /// No frame unless `show-frame` (a hovered row) or focused: for track titles.
+    in property <bool> ghost;
+    in property <bool> show-frame: !root.ghost;
+    /// The cosmetic ":::" in front, like a prompt; never part of the text.
+    in property <bool> prefix: true;
+    in property <bool> read-only;
+    in property <bool> enabled: true;
+    in property <TextHorizontalAlignment> align: left;
+    in property <length> font-size: Theme.fs-secondary;
+    in property <int> font-weight: 400;
+    in property <color> fg: Theme.text;
+    /// For fields on a tag's color: a fixed frame instead of the accent.
+    in property <color> frame-color: transparent;
+    in property <string> tip;
+    out property <bool> focused: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    /// On enter or when focus leaves: for fields that apply only when done.
+    callback committed(string);
+
+
+    property <bool> filled: root.text != "";
+    property <bool> framed: root.show-frame || root.focused;
+    property <color> frame: root.frame-color != transparent ? root.frame-color : root.focused ? Theme.accent : Theme.line;
+    opacity: root.enabled ? 1 : 0.4;
+    border-width: root.framed && root.filled ? 1px : 0px;
+    border-color: root.frame;
+
+    if root.framed && !root.filled: Dashed {
+        stroke: root.focused && root.frame-color == transparent ? Theme.accent : root.frame;
+    }
+
+    HorizontalLayout {
+        padding-left: root.small ? 6px : 7px;
+        padding-right: root.small ? 6px : 7px;
+        padding-top: root.small ? 3px : 5px;
+        padding-bottom: root.small ? 3px : 5px;
+        spacing: 6px;
+        if root.prefix: Text {
+            text: ":::";
+            color: Theme.muted;
+            font-size: root.font-size;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-width: 8px;
+            min-height: input.preferred-height;
+            // Long text stays inside the field (it scrolls while typing) instead of running past it.
+            clip: true;
+            input := TextInput {
+                y: (parent.height - self.height) / 2;
+                width: parent.width;
+                text <=> root.text;
+                single-line: true;
+                read-only: root.read-only || !root.enabled;
+                enabled: root.enabled;
+                color: root.fg;
+                font-size: root.font-size;
+                font-weight: root.font-weight;
+                horizontal-alignment: root.align;
+                selection-background-color: Theme.line;
+                selection-foreground-color: Theme.text;
+                edited => { root.edited(self.text); }
+                accepted => {
+                    root.accepted(self.text);
+                    root.committed(self.text);
+                }
+                changed has-focus => {
+                    if !self.has-focus {
+                        root.committed(self.text);
+                    }
+                }
+            }
+            if root.text == "": Text {
+                width: parent.width;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-size: Theme.fs-additional;
+                vertical-alignment: center;
+                horizontal-alignment: root.align;
+                overflow: elide;
+            }
+        }
+    }
+
+    if root.tip != "": Tooltip {
+        TipBox { text: root.tip; }
+    }
+}
+
+/// Multi-line text, scrolling when it outgrows the box.
+export component TextArea inherits Rectangle {
+    in-out property <string> text;
+    in property <bool> read-only;
+    callback edited(string);
+
+    property <bool> filled: root.text != "";
+    border-width: root.filled || input.has-focus ? 1px : 0px;
+    border-color: input.has-focus ? Theme.accent : Theme.line;
+    if !root.filled && !input.has-focus: Dashed { stroke: Theme.line; }
+
+    Text {
+        x: 7px;
+        y: 5px;
+        text: ":::";
+        color: Theme.muted;
+        font-size: Theme.fs-secondary;
+    }
+
+    flick := Flickable {
+        x: 40px;
+        y: 5px;
+        width: parent.width - 47px;
+        height: parent.height - 10px;
+        content-height: Math.max(self.height, input.preferred-height);
+        input := TextInput {
+            width: parent.width;
+            height: Math.max(flick.height, self.preferred-height);
+            text <=> root.text;
+            single-line: false;
+            wrap: word-wrap;
+            read-only: root.read-only;
+            color: Theme.text;
+            font-size: Theme.fs-secondary;
+            selection-background-color: Theme.line;
+            selection-foreground-color: Theme.text;
+            edited => { root.edited(self.text); }
+        }
+    }
+}
+
+/// Small uppercase-feel accent label above a field.
+export component Label inherits Text {
+    color: Theme.accent;
+    font-size: Theme.fs-additional;
+    letter-spacing: 3px;
+}
+
+export component Muted inherits Text {
+    color: Theme.muted;
+    font-size: Theme.fs-additional;
+    letter-spacing: 1.5px;
+    overflow: elide;
+}
+
+export component Note inherits Text {
+    color: Theme.muted;
+    font-size: Theme.fs-additional;
+    letter-spacing: 1.5px;
+    wrap: word-wrap;
+}
+
+/// A tag: a small block of its color with dark text.
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <color> tint;
+    background: root.tint;
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        padding-top: 1px;
+        padding-bottom: 1px;
+        Text {
+            text: root.text;
+            color: Theme.ink;
+            font-size: Theme.fs-additional;
+            letter-spacing: 0.5px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+/// A tag as a button (picker, filters): dim while off.
+export component ChipBtn inherits Rectangle {
+    in property <string> text;
+    in property <color> tint;
+    in property <bool> on;
+    in property <string> tip;
+    callback clicked();
+    /// Pressed and moved: where the pointer is, in window coordinates; then let go.
+    callback dragged(length, length);
+    callback dropped();
+    property <bool> dragging;
+    opacity: root.on ? 1 : 0.35;
+    Chip {
+        text: root.text;
+        tint: root.tint;
+    }
+    TouchArea {
+        mouse-cursor: self.pressed && root.dragging ? MouseCursor.grabbing : MouseCursor.pointer;
+        pointer-event(e) => {
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                root.dragging = false;
+            } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up && root.dragging {
+                root.dropped();
+            }
+        }
+        moved => {
+            if root.dragging || Math.abs(self.mouse-x - self.pressed-x) > 4px || Math.abs(self.mouse-y - self.pressed-y) > 4px {
+                root.dragging = true;
+                root.dragged(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+        clicked => {
+            if !root.dragging {
+                root.clicked();
+            }
+        }
+    }
+    if root.tip != "": Tooltip {
+        TipBox { text: root.tip; }
+    }
+}
+
+/// kind: 0 plain, 1 on (accent), 2 warn (danger).
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <int> kind;
+    in property <string> tip;
+    in property <TextHorizontalAlignment> align: left;
+    property <color> c: root.kind == 1 ? Theme.accent : root.kind == 2 ? Theme.danger : Theme.muted;
+    border-width: 1px;
+    border-color: root.kind == 0 ? Theme.line : root.c;
+    HorizontalLayout {
+        padding-left: 5px;
+        padding-right: 5px;
+        padding-top: 1px;
+        padding-bottom: 1px;
+        Text {
+            text: root.text;
+            color: root.c;
+            font-size: Theme.fs-additional;
+            letter-spacing: 0.5px;
+            horizontal-alignment: root.align;
+            vertical-alignment: center;
+        }
+    }
+    if root.tip != "": Tooltip {
+        TipBox { text: root.tip; }
+    }
+}
+
+export component Check inherits Rectangle {
+    in-out property <bool> checked;
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    opacity: root.enabled ? 1 : 0.4;
+    HorizontalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-width: 1px;
+                border-color: Theme.accent;
+                background: root.checked ? Theme.accent : transparent;
+                if root.checked: Text {
+                    text: "✓";
+                    color: Theme.bg;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.fs-secondary;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+export component Radio inherits Rectangle {
+    in property <bool> checked;
+    in property <string> text;
+    callback clicked();
+    HorizontalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Theme.accent;
+                if root.checked: Rectangle {
+                    x: 4px;
+                    y: 4px;
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: Theme.accent;
+                }
+            }
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.fs-secondary;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component HLine inherits Rectangle {
+    height: 1px;
+    background: Theme.line;
+}
+
+export component VLine inherits Rectangle {
+    width: 1px;
+    background: Theme.line;
+}
+
+/// Dialog title bar: ⌜title⌟ over a line.
+export component DialogHead inherits Rectangle {
+    in property <string> title;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        Bracketed {
+            text: root.title;
+            alignment: start;
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+/// Dialog button row, right-aligned under a line.
+export component DialogFoot inherits Rectangle {
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        background: Theme.line;
+    }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+        alignment: end;
+        @children
+    }
+}
+
+/// Album color swatch; the picker one shows the hue wheel itself.
+export component Swatch inherits Rectangle {
+    in property <color> fill;
+    in property <bool> on;
+    in property <string> glyph;
+    in property <image> wheel;
+    in property <bool> is-wheel;
+    in property <string> tip;
+    in property <color> frame: transparent;
+    callback clicked();
+    width: 26px;
+    height: 26px;
+    border-width: 1px;
+    border-color: root.on ? Theme.text : touch.has-hover ? Theme.muted : root.frame;
+    Rectangle {
+        x: 3px;
+        y: 3px;
+        width: parent.width - 6px;
+        height: parent.height - 6px;
+        background: root.fill;
+    }
+    if root.is-wheel: Image {
+        x: 4px;
+        y: 4px;
+        width: 18px;
+        height: 18px;
+        source: root.wheel;
+    }
+    if root.glyph != "": Text {
+        text: root.glyph;
+        color: Theme.text;
+        font-size: Theme.fs-additional;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    if root.tip != "": Tooltip {
+        TipBox { text: root.tip; }
+    }
+}
+
+/// Hue around, saturation outward. Reports where it was pressed, from -1 to 1 on each axis.
+export component ColorWheel inherits Rectangle {
+    in property <image> wheel;
+    callback picked(float, float);
+    width: 200px;
+    height: 200px;
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.wheel;
+    }
+    TouchArea {
+        mouse-cursor: crosshair;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.picked(self.mouse-x / self.width * 2 - 1, self.mouse-y / self.height * 2 - 1);
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.picked(self.mouse-x / self.width * 2 - 1, self.mouse-y / self.height * 2 - 1);
+            }
+        }
+    }
+}
+
+/// Placeholder cover: one euclidean rhythm ring per track (computed in Rust, as fractions of the side).
+export struct Dot {
+    x: float,
+    y: float,
+    d: float,
+    a: float,
+}
+
+export component RingCover inherits Rectangle {
+    in property <[float]> rings;
+    in property <[Dot]> dots;
+    in property <color> tint;
+    property <length> s: Math.min(self.width, self.height);
+    for r in root.rings: Rectangle {
+        width: root.s * r;
+        height: self.width;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        border-radius: self.width / 2;
+        border-width: 1px;
+        border-color: root.tint.with-alpha(0.15);
+    }
+    for d in root.dots: Rectangle {
+        width: Math.max(1px, root.s * d.d);
+        height: self.width;
+        x: root.width / 2 + root.s * d.x - self.width / 2;
+        y: root.height / 2 + root.s * d.y - self.height / 2;
+        border-radius: self.width / 2;
+        background: root.tint.with-alpha(d.a);
+    }
+}
