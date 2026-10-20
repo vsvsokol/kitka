@@ -57,7 +57,19 @@ export component Dashed inherits Rectangle {
     }
 }
 
-export component Btn inherits Rectangle {
+/// Squashes while held down and springs back when let go, like the bin in Albumka.
+component Squashy inherits Rectangle {
+    in-out property <bool> squashed;
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    transform-scale-x: root.squashed ? 1.06 : 1;
+    transform-scale-y: root.squashed ? 0.84 : 1;
+    animate transform-scale-x, transform-scale-y {
+        duration: root.squashed ? 70ms : 550ms;
+        easing: root.squashed ? ease-out : ease-out-elastic;
+    }
+}
+
+export component Btn inherits Squashy {
     in property <string> text;
     in property <bool> enabled: true;
     in property <bool> primary;
@@ -71,13 +83,16 @@ export component Btn inherits Rectangle {
 
     property <color> fg: root.danger ? Theme.danger : Theme.accent;
     property <bool> hot: touch.has-hover && root.enabled;
+    squashed: touch.pressed && root.enabled;
     min-height: root.icon ? 30px : 0px;
     min-width: root.icon ? 30px : 0px;
     background: root.hot ? Theme.hover-wash : Theme.bg;
     border-width: 1px;
-    border-color: root.fg;
-    // A slow pulse while hovered, like the C# app.
-    opacity: !root.enabled ? 0.3 : root.hot ? 0.875 + 0.125 * Math.cos(animation-tick() / 1s * 360deg) : 1;
+    // A slow pulse while hovered, on the colors: pulsing the opacity would draw the button through
+    // a layer, where the GPU renderer places the text a pixel or two off.
+    property <float> pulse: root.hot ? 0.875 + 0.125 * Math.cos(animation-tick() / 1s * 360deg) : 1;
+    border-color: root.fg.with-alpha(root.pulse);
+    opacity: root.enabled ? 1 : 0.3;
     animate background { duration: 300ms; }
 
     HorizontalLayout {
@@ -87,7 +102,7 @@ export component Btn inherits Rectangle {
         padding-bottom: root.icon ? 0px : 5px;
         Text {
             text: root.text;
-            color: root.hot && !root.danger ? Theme.text : root.fg;
+            color: (root.hot && !root.danger ? Theme.text : root.fg).with-alpha(root.pulse);
             font-family: root.family;
             font-size: Theme.fs-main;
             font-weight: root.primary ? 700 : 400;
@@ -157,11 +172,12 @@ export component Bracketed inherits HorizontalLayout {
 }
 
 /// Header tab: the inactive view is dimmed.
-export component TabBtn inherits Rectangle {
+export component TabBtn inherits Squashy {
     in property <string> text;
     in property <bool> active;
     callback clicked();
     horizontal-stretch: 0;
+    squashed: touch.pressed;
     opacity: root.active ? 1 : 0.35;
     HorizontalLayout {
         padding-right: 14px;
@@ -172,7 +188,7 @@ export component TabBtn inherits Rectangle {
             font-weight: 700;
         }
     }
-    TouchArea {
+    touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
@@ -357,7 +373,7 @@ export component Chip inherits Rectangle {
 }
 
 /// A tag as a button (picker, filters): dim while off.
-export component ChipBtn inherits Rectangle {
+export component ChipBtn inherits Squashy {
     in property <string> text;
     in property <color> tint;
     in property <bool> on;
@@ -368,11 +384,12 @@ export component ChipBtn inherits Rectangle {
     callback dropped();
     property <bool> dragging;
     opacity: root.on ? 1 : 0.35;
+    squashed: touch.pressed && !root.dragging;
     Chip {
         text: root.text;
         tint: root.tint;
     }
-    TouchArea {
+    touch := TouchArea {
         mouse-cursor: self.pressed && root.dragging ? MouseCursor.grabbing : MouseCursor.pointer;
         pointer-event(e) => {
             if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
@@ -502,6 +519,76 @@ export component Radio inherits Rectangle {
     TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+}
+
+/// A labelled value, dragged or clicked along a line. `step` rounds it, so whole numbers use 1.
+export component Slider inherits Rectangle {
+    in property <string> text;
+    in-out property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 1;
+    in property <float> step: 0.01;
+    callback changed(float);
+
+    property <float> t: Math.clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0, 1);
+
+    function set(x: length) {
+        let v = root.minimum + Math.clamp(x / track.width, 0, 1) * (root.maximum - root.minimum);
+        let rounded = Math.round(v / root.step) * root.step;
+        if rounded != root.value {
+            root.value = rounded;
+            root.changed(rounded);
+        }
+    }
+
+    VerticalLayout {
+        spacing: 4px;
+        HorizontalLayout {
+            Muted {
+                text: root.text;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: root.value.to-fixed(root.step >= 1 ? 0 : 2);
+                color: touch.pressed ? Theme.accent : Theme.text;
+                font-size: Theme.fs-additional;
+            }
+        }
+        track := Rectangle {
+            height: 14px;
+            Rectangle {
+                y: parent.height / 2;
+                height: 1px;
+                background: Theme.line;
+            }
+            Rectangle {
+                x: 0px;
+                y: parent.height / 2;
+                width: parent.width * root.t;
+                height: 1px;
+                background: Theme.accent;
+            }
+            Rectangle {
+                x: parent.width * root.t - self.width / 2;
+                width: 8px;
+                height: 12px;
+                background: touch.has-hover || touch.pressed ? Theme.text : Theme.accent;
+            }
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(e) => {
+                    if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                        root.set(self.mouse-x);
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.set(self.mouse-x);
+                    }
+                }
+            }
+        }
     }
 }
 
