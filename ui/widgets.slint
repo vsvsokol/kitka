@@ -529,6 +529,8 @@ export component Slider inherits Rectangle {
     in property <float> minimum: 0;
     in property <float> maximum: 1;
     in property <float> step: 0.01;
+    /// What shows at the right of the label; empty hides it.
+    in property <string> readout: root.value.to-fixed(root.step >= 1 ? 0 : 2);
     callback changed(float);
 
     property <float> t: Math.clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0, 1);
@@ -550,7 +552,7 @@ export component Slider inherits Rectangle {
                 horizontal-stretch: 1;
             }
             Text {
-                text: root.value.to-fixed(root.step >= 1 ? 0 : 2);
+                text: root.readout;
                 color: touch.pressed ? Theme.accent : Theme.text;
                 font-size: Theme.fs-additional;
             }
