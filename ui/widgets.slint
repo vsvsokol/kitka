@@ -69,6 +69,39 @@ component Squashy inherits Rectangle {
     }
 }
 
+/// Keyboard focus for a control. Off unless `on`, and never taken by a click, so an app's own key
+/// handling (Albumka's Tab through tracks) keeps working. Enter and Space activate; with `arrows`,
+/// the arrow keys step. Two corner marks show where the focus is.
+component KeyFocus inherits FocusScope {
+    in property <bool> on;
+    in property <bool> arrows;
+    callback activated();
+    callback stepped(int);
+    enabled: root.on;
+    focus-on-click: false;
+    key-pressed(e) => {
+        if e.text == Key.Return || e.text == " " {
+            root.activated();
+            return accept;
+        }
+        if root.arrows && (e.text == Key.RightArrow || e.text == Key.UpArrow) {
+            root.stepped(1);
+            return accept;
+        }
+        if root.arrows && (e.text == Key.LeftArrow || e.text == Key.DownArrow) {
+            root.stepped(-1);
+            return accept;
+        }
+        reject
+    }
+    if root.has-focus: Rectangle {
+        Rectangle { x: -4px; y: -4px; width: 8px; height: 2px; background: Theme.accent; }
+        Rectangle { x: -4px; y: -4px; width: 2px; height: 8px; background: Theme.accent; }
+        Rectangle { x: parent.width - 4px; y: parent.height + 2px; width: 8px; height: 2px; background: Theme.accent; }
+        Rectangle { x: parent.width + 2px; y: parent.height - 4px; width: 2px; height: 8px; background: Theme.accent; }
+    }
+}
+
 export component Btn inherits Squashy {
     in property <string> text;
     in property <bool> enabled: true;
@@ -79,7 +112,16 @@ export component Btn inherits Squashy {
     in property <string> tip;
     /// A typeface other than the app's, to show it.
     in property <string> family;
+    /// Reachable with Tab (see KeyFocus).
+    in property <bool> tab-stop;
     callback clicked();
+
+    accessible-role: button;
+    // An icon's glyph (× or …) says little out loud; its tip says what it does.
+    accessible-label: root.icon && root.tip != "" ? root.tip : root.text;
+    accessible-description: root.icon ? "" : root.tip;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
 
     property <color> fg: root.danger ? Theme.danger : Theme.accent;
     property <bool> hot: touch.has-hover && root.enabled;
@@ -88,9 +130,21 @@ export component Btn inherits Squashy {
     min-width: root.icon ? 30px : 0px;
     background: root.hot ? Theme.hover-wash : Theme.bg;
     border-width: 1px;
-    // A slow pulse while hovered, on the colors: pulsing the opacity would draw the button through
-    // a layer, where the GPU renderer places the text a pixel or two off.
-    property <float> pulse: root.hot ? 0.875 + 0.125 * Math.cos(animation-tick() / 1s * 360deg) : 1;
+    // A pulse while hovered, on the colors: pulsing the opacity would draw the button through a
+    // layer, where the GPU renderer places the text a pixel or two off. It starts on the beat the
+    // pointer arrives and stops after two, so a resting pointer doesn't keep the window redrawing.
+    property <duration> hover-start;
+    property <bool> pulsing;
+    changed hot => {
+        root.hover-start = animation-tick();
+        root.pulsing = root.hot;
+    }
+    Timer {
+        interval: 2s;
+        running: root.pulsing;
+        triggered => { root.pulsing = false; }
+    }
+    property <float> pulse: root.pulsing ? 0.875 + 0.125 * Math.cos((animation-tick() - root.hover-start) / 1s * 360deg) : 1;
     border-color: root.fg.with-alpha(root.pulse);
     opacity: root.enabled ? 1 : 0.3;
     animate background { duration: 300ms; }
@@ -109,6 +163,7 @@ export component Btn inherits Squashy {
             letter-spacing: root.icon ? 0px : 1px;
             horizontal-alignment: center;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
 
@@ -116,6 +171,11 @@ export component Btn inherits Squashy {
         enabled: root.enabled;
         mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
         clicked => { root.clicked(); }
+    }
+
+    KeyFocus {
+        on: root.tab-stop && root.enabled;
+        activated => { root.clicked(); }
     }
 
     if root.tip != "": Tooltip {
@@ -130,9 +190,12 @@ export component Bracketed inherits HorizontalLayout {
     in property <color> color: Theme.accent;
     in property <length> font-size: Theme.fs-head;
     in property <int> font-weight: 400;
+    /// The corners mean "current"; without them the text keeps its place.
+    in property <bool> marks: true;
     spacing: 5px;
     Rectangle {
         width: 7px;
+        visible: root.marks;
         Rectangle {
             y: parent.height * 0.2;
             height: 1px;
@@ -156,6 +219,7 @@ export component Bracketed inherits HorizontalLayout {
     }
     Rectangle {
         width: 7px;
+        visible: root.marks;
         Rectangle {
             y: parent.height * 0.8 - 1px;
             height: 1px;
@@ -171,19 +235,27 @@ export component Bracketed inherits HorizontalLayout {
     }
 }
 
-/// Header tab: the inactive view is dimmed.
+/// Header tab: the inactive view is dimmed and loses its corners.
 export component TabBtn inherits Squashy {
     in property <string> text;
     in property <bool> active;
+    /// Reachable with Tab (see KeyFocus).
+    in property <bool> tab-stop;
     callback clicked();
+    accessible-role: tab;
+    accessible-label: root.text;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.active;
+    accessible-action-default => { root.clicked(); }
     horizontal-stretch: 0;
     squashed: touch.pressed;
-    opacity: root.active ? 1 : 0.35;
     HorizontalLayout {
         padding-right: 14px;
         alignment: start;
         Bracketed {
             text: root.text;
+            color: root.active ? Theme.accent : Theme.accent-dim;
+            marks: root.active;
             font-size: Theme.fs-head-lg;
             font-weight: 700;
         }
@@ -191,6 +263,10 @@ export component TabBtn inherits Squashy {
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+    KeyFocus {
+        on: root.tab-stop;
+        activated => { root.clicked(); }
     }
 }
 
@@ -213,6 +289,8 @@ export component Field inherits Rectangle {
     /// For fields on a tag's color: a fixed frame instead of the accent.
     in property <color> frame-color: transparent;
     in property <string> tip;
+    /// What a screen reader calls the field (the label shown above it isn't linked); else the placeholder.
+    in property <string> label;
     out property <bool> focused: input.has-focus;
     callback edited(string);
     callback accepted(string);
@@ -242,6 +320,7 @@ export component Field inherits Rectangle {
             color: Theme.muted;
             font-size: root.font-size;
             vertical-alignment: center;
+            accessible-role: none;
         }
         Rectangle {
             horizontal-stretch: 1;
@@ -262,6 +341,9 @@ export component Field inherits Rectangle {
                 horizontal-alignment: root.align;
                 selection-background-color: Theme.line;
                 selection-foreground-color: Theme.text;
+                accessible-label: root.label != "" ? root.label : root.placeholder;
+                accessible-placeholder-text: root.placeholder;
+                accessible-description: root.tip;
                 edited => { root.edited(self.text); }
                 accepted => {
                     root.accepted(self.text);
@@ -281,6 +363,7 @@ export component Field inherits Rectangle {
                 vertical-alignment: center;
                 horizontal-alignment: root.align;
                 overflow: elide;
+                accessible-role: none;
             }
         }
     }
@@ -294,6 +377,8 @@ export component Field inherits Rectangle {
 export component TextArea inherits Rectangle {
     in-out property <string> text;
     in property <bool> read-only;
+    /// What a screen reader calls it.
+    in property <string> label;
     callback edited(string);
 
     property <bool> filled: root.text != "";
@@ -307,6 +392,7 @@ export component TextArea inherits Rectangle {
         text: ":::";
         color: Theme.muted;
         font-size: Theme.fs-secondary;
+        accessible-role: none;
     }
 
     flick := Flickable {
@@ -326,6 +412,7 @@ export component TextArea inherits Rectangle {
             font-size: Theme.fs-secondary;
             selection-background-color: Theme.line;
             selection-foreground-color: Theme.text;
+            accessible-label: root.label;
             edited => { root.edited(self.text); }
         }
     }
@@ -378,7 +465,15 @@ export component ChipBtn inherits Squashy {
     in property <color> tint;
     in property <bool> on;
     in property <string> tip;
+    /// Reachable with Tab (see KeyFocus).
+    in property <bool> tab-stop;
     callback clicked();
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-description: root.tip;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-action-default => { root.clicked(); }
     /// Pressed and moved: where the pointer is, in window coordinates; then let go.
     callback dragged(length, length);
     callback dropped();
@@ -410,6 +505,10 @@ export component ChipBtn inherits Squashy {
             }
         }
     }
+    KeyFocus {
+        on: root.tab-stop;
+        activated => { root.clicked(); }
+    }
     if root.tip != "": Tooltip {
         TipBox { text: root.tip; }
     }
@@ -436,6 +535,7 @@ export component Badge inherits Rectangle {
             letter-spacing: 0.5px;
             horizontal-alignment: root.align;
             vertical-alignment: center;
+            accessible-description: root.tip;
         }
     }
     if root.tip != "": Tooltip {
@@ -447,7 +547,22 @@ export component Check inherits Rectangle {
     in-out property <bool> checked;
     in property <string> text;
     in property <bool> enabled: true;
+    /// Reachable with Tab (see KeyFocus).
+    in property <bool> tab-stop;
     callback toggled(bool);
+
+    function toggle() {
+        if root.enabled {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+    accessible-role: checkbox;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.toggle(); }
     opacity: root.enabled ? 1 : 0.4;
     HorizontalLayout {
         spacing: 8px;
@@ -465,6 +580,7 @@ export component Check inherits Rectangle {
                     font-size: 12px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
             }
         }
@@ -473,22 +589,31 @@ export component Check inherits Rectangle {
             color: Theme.text;
             font-size: Theme.fs-secondary;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
     TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => {
-            root.checked = !root.checked;
-            root.toggled(root.checked);
-        }
+        clicked => { root.toggle(); }
+    }
+    KeyFocus {
+        on: root.tab-stop && root.enabled;
+        activated => { root.toggle(); }
     }
 }
 
 export component Radio inherits Rectangle {
     in property <bool> checked;
     in property <string> text;
+    /// Reachable with Tab (see KeyFocus).
+    in property <bool> tab-stop;
     callback clicked();
+    accessible-role: radio-button;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.clicked(); }
     HorizontalLayout {
         spacing: 8px;
         VerticalLayout {
@@ -514,11 +639,16 @@ export component Radio inherits Rectangle {
             color: Theme.text;
             font-size: Theme.fs-secondary;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
     TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+    KeyFocus {
+        on: root.tab-stop;
+        activated => { root.clicked(); }
     }
 }
 
@@ -531,18 +661,32 @@ export component Slider inherits Rectangle {
     in property <float> step: 0.01;
     /// What shows at the right of the label; empty hides it.
     in property <string> readout: root.value.to-fixed(root.step >= 1 ? 0 : 2);
+    /// Reachable with Tab (see KeyFocus); the arrow keys move it a step.
+    in property <bool> tab-stop;
     callback changed(float);
 
     property <float> t: Math.clamp((root.value - root.minimum) / (root.maximum - root.minimum), 0, 1);
 
-    function set(x: length) {
-        let v = root.minimum + Math.clamp(x / track.width, 0, 1) * (root.maximum - root.minimum);
-        let rounded = Math.round(v / root.step) * root.step;
+    function set-value(v: float) {
+        let rounded = Math.round(Math.clamp(v, root.minimum, root.maximum) / root.step) * root.step;
         if rounded != root.value {
             root.value = rounded;
             root.changed(rounded);
         }
     }
+    function set(x: length) {
+        root.set-value(root.minimum + Math.clamp(x / track.width, 0, 1) * (root.maximum - root.minimum));
+    }
+
+    accessible-role: slider;
+    accessible-label: root.text;
+    accessible-value: root.readout != "" ? root.readout : root.value.to-fixed(2);
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: root.step;
+    accessible-action-increment => { root.set-value(root.value + root.step); }
+    accessible-action-decrement => { root.set-value(root.value - root.step); }
+    accessible-action-set-value(v) => { root.set-value(v.to-float()); }
 
     VerticalLayout {
         spacing: 4px;
@@ -550,11 +694,13 @@ export component Slider inherits Rectangle {
             Muted {
                 text: root.text;
                 horizontal-stretch: 1;
+                accessible-role: none;
             }
             Text {
                 text: root.readout;
                 color: touch.pressed ? Theme.accent : Theme.text;
                 font-size: Theme.fs-additional;
+                accessible-role: none;
             }
         }
         track := Rectangle {
@@ -591,6 +737,11 @@ export component Slider inherits Rectangle {
                 }
             }
         }
+    }
+    KeyFocus {
+        on: root.tab-stop;
+        arrows: true;
+        stepped(d) => { root.set-value(root.value + d * root.step); }
     }
 }
 
@@ -651,7 +802,14 @@ export component Swatch inherits Rectangle {
     in property <bool> is-wheel;
     in property <string> tip;
     in property <color> frame: transparent;
+    /// Reachable with Tab (see KeyFocus).
+    in property <bool> tab-stop;
     callback clicked();
+    accessible-role: button;
+    accessible-label: root.tip != "" ? root.tip : root.glyph;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-action-default => { root.clicked(); }
     width: 26px;
     height: 26px;
     border-width: 1px;
@@ -669,6 +827,7 @@ export component Swatch inherits Rectangle {
         width: 18px;
         height: 18px;
         source: root.wheel;
+        accessible-role: none;
     }
     if root.glyph != "": Text {
         text: root.glyph;
@@ -676,10 +835,15 @@ export component Swatch inherits Rectangle {
         font-size: Theme.fs-additional;
         horizontal-alignment: center;
         vertical-alignment: center;
+        accessible-role: none;
     }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+    KeyFocus {
+        on: root.tab-stop;
+        activated => { root.clicked(); }
     }
     if root.tip != "": Tooltip {
         TipBox { text: root.tip; }
@@ -692,10 +856,12 @@ export component ColorWheel inherits Rectangle {
     callback picked(float, float);
     width: 200px;
     height: 200px;
+    // Pointer only: keyboards and screen readers need another way in, like Albumka's hex field.
     Image {
         width: 100%;
         height: 100%;
         source: root.wheel;
+        accessible-role: none;
     }
     TouchArea {
         mouse-cursor: crosshair;

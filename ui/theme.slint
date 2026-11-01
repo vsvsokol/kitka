@@ -4,7 +4,7 @@
 
 export global Theme {
     in property <bool> light;
-    /// Set by Rust: the album's color (darkened on the light theme), or the theme's own.
+    /// Set by Rust: the album's color made readable with `kitka::accent`, or the theme's own.
     in property <color> accent: light ? #1f5fbf : #6aafff;
     in property <string> mono: "Consolas";
     /// Text size from settings: small, standard or big.
@@ -15,6 +15,10 @@ export global Theme {
     out property <color> muted: light ? #5f6672 : #7d8494;
     out property <color> danger: light ? #b3261e : #ff6a6a;
     out property <color> ok: light ? #1e7a4d : #6affa8;
+    /// The accent pulled toward the ground, for big secondary text like an inactive tab. Solid
+    /// rather than an opacity, so it stays above 3:1 (checked against the swatches once the
+    /// accent comes through `kitka::accent`).
+    out property <color> accent-dim: accent.mix(bg, 0.8);
     out property <color> line: accent.with-alpha(light ? 0.35 : 0.30);
     out property <color> hairline: accent.with-alpha(light ? 0.15 : 0.12);
     out property <color> hover-wash: accent.with-alpha(0.08);
