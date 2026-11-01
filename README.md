@@ -27,3 +27,13 @@ In `.slint` files:
 import { Theme } from "@kitka/theme.slint";
 import { Btn, Field } from "@kitka/widgets.slint";
 ```
+
+The app also depends on kitka at run time (same commit) for `kitka::accent`, which makes a color
+readable as `Theme.accent`, and `kitka::sigil`, which draws the ring mark `RingCover` shows. Its
+window keeps the `Screen` global's size current, so menus near the bottom open upward and tips
+near the right edge hang to the left:
+
+```slint
+changed width => { Screen.width = self.width; }
+changed height => { Screen.height = self.height; }
+```

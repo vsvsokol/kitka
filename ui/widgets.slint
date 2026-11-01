@@ -1,30 +1,122 @@
 // The app's own controls, in its visual language (see theme.slint). Slint's standard widgets have
 // their own look, so only plain elements are used here. Things you press are round: pills, and
 // circles for icon buttons. Controls that belong together touch: a long row is one pill split by
-// walls (Films), a short group is beads joined by necks (Btn's `bead`).
+// walls (Films), a short group is beads joined by necks (Btn's `bead`). Menus grow out of what
+// opened them (Bud), tips hang from the pointer (TipBox), a drag is tied to where it started
+// (Tether) and lands in a dashed Place, and empty space is a Lattice of dots.
 
 import { Theme } from "theme.slint";
 
 /// A Btn's place in a Films strip.
 export enum Join { none, first, middle, last }
 
-/// Tooltip body in the app's style.
+/// The window's size, set by the app, so a Bud near the bottom opens upward and a tip near the
+/// right edge hangs to the left.
+export global Screen {
+    in-out property <length> width: 100000px;
+    in-out property <length> height: 100000px;
+}
+
+/// Tooltip body in the app's style: a note hanging from the pointer on a short leader. Slint puts
+/// a tooltip just under the pointer, inside the style's own frame, which can't be turned off. So
+/// this takes no room, which shrinks that frame to its empty padding, and covers it.
 export component TipBox inherits Rectangle {
     in property <string> text;
-    background: Theme.bg;
-    border-width: 1px;
-    border-color: Theme.accent;
-    border-radius: Theme.round-pop;
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        padding-top: 4px;
-        padding-bottom: 4px;
-        Text {
+    /// Window x of what it's about. Inside the tooltip's popup positions start from the popup,
+    /// so the owner says where it is, and the tip hangs to the left near the window's edge.
+    in property <length> from-x;
+    property <bool> left: root.from-x + box.width > Screen.width;
+    width: 0px;
+    height: 0px;
+    Rectangle {
+        width: 18px;
+        height: 12px;
+        background: Theme.bg;
+    }
+    Rectangle {
+        x: 2px;
+        width: 5px;
+        height: 5px;
+        border-radius: 2.5px;
+        background: Theme.accent;
+    }
+    Rectangle {
+        x: 4px;
+        y: 2px;
+        width: 1px;
+        height: 12px;
+        background: Theme.accent;
+    }
+    box := Rectangle {
+        x: root.left ? 15px - self.width : -6px;
+        y: 14px;
+        width: label.preferred-width + 20px;
+        height: label.preferred-height + 8px;
+        background: Theme.bg;
+        border-width: 1px;
+        border-color: Theme.accent;
+        border-radius: Theme.round-pop;
+        label := Text {
+            x: 10px;
+            y: 4px;
             text: root.text;
             color: Theme.text;
             font-size: Theme.fs-additional;
         }
+    }
+}
+
+/// A popup's body that grows out of what opened it through a neck. Put it in a PopupWindow whose
+/// top edge sits 1px above the anchor's bottom edge (with `up`, whose bottom edge sits 1px below
+/// the anchor's top), and give it the anchor's middle as `neck-x`. A menu opened at the pointer
+/// has nothing to grow from: `neck: false`.
+export component Bud inherits Rectangle {
+    in property <length> neck-x: 24px;
+    in property <bool> neck: true;
+    in property <bool> up;
+    in property <length> inset: 12px;
+    in property <length> spacing: 8px;
+    VerticalLayout {
+        // Room for the neck on both sides, so the height doesn't depend on which way it opens.
+        padding-top: root.neck ? 9px : 0px;
+        padding-bottom: root.neck ? 9px : 0px;
+        Rectangle {
+            background: Theme.bg;
+            border-width: 1px;
+            border-color: Theme.accent;
+            border-radius: Theme.round-pop;
+            clip: true;
+            VerticalLayout {
+                padding: root.inset;
+                spacing: root.spacing;
+                @children
+            }
+        }
+    }
+    // Narrower where it leaves the anchor than where it opens into the body. The ground fill
+    // hides both outlines where they meet, then the two edges are drawn.
+    if root.neck: Path {
+        x: root.neck-x - 14px;
+        y: root.up ? root.height - 10px : 0px;
+        width: 28px;
+        height: 10px;
+        viewbox-width: 28;
+        viewbox-height: 10;
+        fit: fill;
+        fill: Theme.bg;
+        commands: root.up ? "M 4 10 L 24 10 L 24 9.5 C 18 9.5 18 0.5 28 0.5 L 28 0 L 0 0 L 0 0.5 C 10 0.5 10 9.5 4 9.5 Z" : "M 4 0 L 24 0 L 24 0.5 C 18 0.5 18 9.5 28 9.5 L 28 10 L 0 10 L 0 9.5 C 10 9.5 10 0.5 4 0.5 Z";
+    }
+    if root.neck: Path {
+        x: root.neck-x - 14px;
+        y: root.up ? root.height - 10px : 0px;
+        width: 28px;
+        height: 10px;
+        viewbox-width: 28;
+        viewbox-height: 10;
+        fit: fill;
+        stroke: Theme.accent;
+        stroke-width: 1px;
+        commands: root.up ? "M 4 9.5 C 10 9.5 10 0.5 0 0.5 M 24 9.5 C 18 9.5 18 0.5 28 0.5" : "M 4 0.5 C 10 0.5 10 9.5 0 9.5 M 24 0.5 C 18 0.5 18 9.5 28 9.5";
     }
 }
 
@@ -305,7 +397,10 @@ export component Btn inherits Squashy {
     }
 
     if root.tip != "": Tooltip {
-        TipBox { text: root.tip; }
+        TipBox {
+            text: root.tip;
+            from-x: root.absolute-position.x;
+        }
     }
 }
 
@@ -505,7 +600,10 @@ export component Field inherits Rectangle {
     }
 
     if root.tip != "": Tooltip {
-        TipBox { text: root.tip; }
+        TipBox {
+            text: root.tip;
+            from-x: root.absolute-position.x;
+        }
     }
 }
 
@@ -606,6 +704,54 @@ export component Chip inherits Rectangle {
     }
 }
 
+/// Where a carried thing would land: a dashed pill the size of a Chip, with its name.
+export component Place inherits Rectangle {
+    in property <string> text;
+    width: label.preferred-width + 16px;
+    height: label.preferred-height + 2px;
+    Dashed {
+        radius: root.height / 2;
+        stroke: Theme.accent;
+    }
+    label := Text {
+        x: 8px;
+        y: 1px;
+        text: root.text;
+        color: Theme.muted;
+        font-size: Theme.fs-additional;
+        letter-spacing: 0.5px;
+    }
+}
+
+/// A line from the spot a carried thing was picked up to where it is now, with a ring on that
+/// spot. Coordinates are in this element's frame, so give it the whole area a drag can cross.
+export component Tether inherits Rectangle {
+    in property <length> from-x;
+    in property <length> from-y;
+    in property <length> to-x;
+    in property <length> to-y;
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        fit: fill;
+        stroke: Theme.accent;
+        stroke-width: 1px;
+        commands: "M \{root.from-x / 1px} \{root.from-y / 1px} L \{root.to-x / 1px} \{root.to-y / 1px}";
+    }
+    Rectangle {
+        x: root.from-x - 5px;
+        y: root.from-y - 5px;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        border-width: 1px;
+        border-color: Theme.accent;
+        background: Theme.bg;
+    }
+}
+
 /// A tag as a button (picker, filters): dim while off.
 export component ChipBtn inherits Squashy {
     in property <string> text;
@@ -657,7 +803,10 @@ export component ChipBtn inherits Squashy {
         activated => { root.clicked(); }
     }
     if root.tip != "": Tooltip {
-        TipBox { text: root.tip; }
+        TipBox {
+            text: root.tip;
+            from-x: root.absolute-position.x;
+        }
     }
 }
 
@@ -689,7 +838,10 @@ export component Badge inherits Rectangle {
         }
     }
     if root.tip != "": Tooltip {
-        TipBox { text: root.tip; }
+        TipBox {
+            text: root.tip;
+            from-x: root.absolute-position.x;
+        }
     }
 }
 
@@ -927,6 +1079,47 @@ export component DialogHead inherits Rectangle {
     }
 }
 
+/// Empty space as a field of places: a faint dot every 12px. Each row is one Path of a fixed
+/// 1920px run of dots, cut to the width, so a big empty area is a few dozen paths.
+export component Lattice inherits Rectangle {
+    clip: true;
+    for r in Math.ceil(root.height / 12px): Path {
+        y: r * 12px;
+        width: 1920px;
+        height: 2px;
+        viewbox-width: 1920;
+        viewbox-height: 2;
+        fit: fill;
+        fill: Theme.line;
+        commands: "M0 0h1.5v1.5h-1.5zM12 0h1.5v1.5h-1.5zM24 0h1.5v1.5h-1.5zM36 0h1.5v1.5h-1.5zM48 0h1.5v1.5h-1.5zM60 0h1.5v1.5h-1.5zM72 0h1.5v1.5h-1.5zM84 0h1.5v1.5h-1.5zM96 0h1.5v1.5h-1.5zM108 0h1.5v1.5h-1.5zM120 0h1.5v1.5h-1.5zM132 0h1.5v1.5h-1.5zM144 0h1.5v1.5h-1.5zM156 0h1.5v1.5h-1.5zM168 0h1.5v1.5h-1.5zM180 0h1.5v1.5h-1.5zM192 0h1.5v1.5h-1.5zM204 0h1.5v1.5h-1.5zM216 0h1.5v1.5h-1.5zM228 0h1.5v1.5h-1.5zM240 0h1.5v1.5h-1.5zM252 0h1.5v1.5h-1.5zM264 0h1.5v1.5h-1.5zM276 0h1.5v1.5h-1.5zM288 0h1.5v1.5h-1.5zM300 0h1.5v1.5h-1.5zM312 0h1.5v1.5h-1.5zM324 0h1.5v1.5h-1.5zM336 0h1.5v1.5h-1.5zM348 0h1.5v1.5h-1.5zM360 0h1.5v1.5h-1.5zM372 0h1.5v1.5h-1.5zM384 0h1.5v1.5h-1.5zM396 0h1.5v1.5h-1.5zM408 0h1.5v1.5h-1.5zM420 0h1.5v1.5h-1.5zM432 0h1.5v1.5h-1.5zM444 0h1.5v1.5h-1.5zM456 0h1.5v1.5h-1.5zM468 0h1.5v1.5h-1.5zM480 0h1.5v1.5h-1.5zM492 0h1.5v1.5h-1.5zM504 0h1.5v1.5h-1.5zM516 0h1.5v1.5h-1.5zM528 0h1.5v1.5h-1.5zM540 0h1.5v1.5h-1.5zM552 0h1.5v1.5h-1.5zM564 0h1.5v1.5h-1.5zM576 0h1.5v1.5h-1.5zM588 0h1.5v1.5h-1.5zM600 0h1.5v1.5h-1.5zM612 0h1.5v1.5h-1.5zM624 0h1.5v1.5h-1.5zM636 0h1.5v1.5h-1.5zM648 0h1.5v1.5h-1.5zM660 0h1.5v1.5h-1.5zM672 0h1.5v1.5h-1.5zM684 0h1.5v1.5h-1.5zM696 0h1.5v1.5h-1.5zM708 0h1.5v1.5h-1.5zM720 0h1.5v1.5h-1.5zM732 0h1.5v1.5h-1.5zM744 0h1.5v1.5h-1.5zM756 0h1.5v1.5h-1.5zM768 0h1.5v1.5h-1.5zM780 0h1.5v1.5h-1.5zM792 0h1.5v1.5h-1.5zM804 0h1.5v1.5h-1.5zM816 0h1.5v1.5h-1.5zM828 0h1.5v1.5h-1.5zM840 0h1.5v1.5h-1.5zM852 0h1.5v1.5h-1.5zM864 0h1.5v1.5h-1.5zM876 0h1.5v1.5h-1.5zM888 0h1.5v1.5h-1.5zM900 0h1.5v1.5h-1.5zM912 0h1.5v1.5h-1.5zM924 0h1.5v1.5h-1.5zM936 0h1.5v1.5h-1.5zM948 0h1.5v1.5h-1.5zM960 0h1.5v1.5h-1.5zM972 0h1.5v1.5h-1.5zM984 0h1.5v1.5h-1.5zM996 0h1.5v1.5h-1.5zM1008 0h1.5v1.5h-1.5zM1020 0h1.5v1.5h-1.5zM1032 0h1.5v1.5h-1.5zM1044 0h1.5v1.5h-1.5zM1056 0h1.5v1.5h-1.5zM1068 0h1.5v1.5h-1.5zM1080 0h1.5v1.5h-1.5zM1092 0h1.5v1.5h-1.5zM1104 0h1.5v1.5h-1.5zM1116 0h1.5v1.5h-1.5zM1128 0h1.5v1.5h-1.5zM1140 0h1.5v1.5h-1.5zM1152 0h1.5v1.5h-1.5zM1164 0h1.5v1.5h-1.5zM1176 0h1.5v1.5h-1.5zM1188 0h1.5v1.5h-1.5zM1200 0h1.5v1.5h-1.5zM1212 0h1.5v1.5h-1.5zM1224 0h1.5v1.5h-1.5zM1236 0h1.5v1.5h-1.5zM1248 0h1.5v1.5h-1.5zM1260 0h1.5v1.5h-1.5zM1272 0h1.5v1.5h-1.5zM1284 0h1.5v1.5h-1.5zM1296 0h1.5v1.5h-1.5zM1308 0h1.5v1.5h-1.5zM1320 0h1.5v1.5h-1.5zM1332 0h1.5v1.5h-1.5zM1344 0h1.5v1.5h-1.5zM1356 0h1.5v1.5h-1.5zM1368 0h1.5v1.5h-1.5zM1380 0h1.5v1.5h-1.5zM1392 0h1.5v1.5h-1.5zM1404 0h1.5v1.5h-1.5zM1416 0h1.5v1.5h-1.5zM1428 0h1.5v1.5h-1.5zM1440 0h1.5v1.5h-1.5zM1452 0h1.5v1.5h-1.5zM1464 0h1.5v1.5h-1.5zM1476 0h1.5v1.5h-1.5zM1488 0h1.5v1.5h-1.5zM1500 0h1.5v1.5h-1.5zM1512 0h1.5v1.5h-1.5zM1524 0h1.5v1.5h-1.5zM1536 0h1.5v1.5h-1.5zM1548 0h1.5v1.5h-1.5zM1560 0h1.5v1.5h-1.5zM1572 0h1.5v1.5h-1.5zM1584 0h1.5v1.5h-1.5zM1596 0h1.5v1.5h-1.5zM1608 0h1.5v1.5h-1.5zM1620 0h1.5v1.5h-1.5zM1632 0h1.5v1.5h-1.5zM1644 0h1.5v1.5h-1.5zM1656 0h1.5v1.5h-1.5zM1668 0h1.5v1.5h-1.5zM1680 0h1.5v1.5h-1.5zM1692 0h1.5v1.5h-1.5zM1704 0h1.5v1.5h-1.5zM1716 0h1.5v1.5h-1.5zM1728 0h1.5v1.5h-1.5zM1740 0h1.5v1.5h-1.5zM1752 0h1.5v1.5h-1.5zM1764 0h1.5v1.5h-1.5zM1776 0h1.5v1.5h-1.5zM1788 0h1.5v1.5h-1.5zM1800 0h1.5v1.5h-1.5zM1812 0h1.5v1.5h-1.5zM1824 0h1.5v1.5h-1.5zM1836 0h1.5v1.5h-1.5zM1848 0h1.5v1.5h-1.5zM1860 0h1.5v1.5h-1.5zM1872 0h1.5v1.5h-1.5zM1884 0h1.5v1.5h-1.5zM1896 0h1.5v1.5h-1.5zM1908 0h1.5v1.5h-1.5zM1920 0h1.5v1.5h-1.5z";
+    }
+}
+
+/// Something is being done: a ring of dots with one lit, stepping on a timer rather than redrawing
+/// every frame. It sits in a layout's middle on its own.
+export component Steps inherits VerticalLayout {
+    in property <bool> running: true;
+    property <int> at;
+    alignment: center;
+    Rectangle {
+        width: 18px;
+        height: 18px;
+        Timer {
+            interval: 150ms;
+            running: root.running;
+            triggered => { root.at = Math.mod(root.at + 1, 8); }
+        }
+        for i in 8: Rectangle {
+            x: 7.5px + 7px * Math.cos(i * 45deg - 90deg);
+            y: 7.5px + 7px * Math.sin(i * 45deg - 90deg);
+            width: 3px;
+            height: 3px;
+            border-radius: 1.5px;
+            background: Theme.accent.with-alpha(i == root.at ? 1 : 0.3);
+        }
+    }
+}
+
 /// Dialog button row, right-aligned under a line.
 export component DialogFoot inherits Rectangle {
     Rectangle {
@@ -1001,7 +1194,10 @@ export component Swatch inherits Rectangle {
         activated => { root.clicked(); }
     }
     if root.tip != "": Tooltip {
-        TipBox { text: root.tip; }
+        TipBox {
+            text: root.tip;
+            from-x: root.absolute-position.x;
+        }
     }
 }
 
@@ -1033,7 +1229,7 @@ export component ColorWheel inherits Rectangle {
     }
 }
 
-/// Placeholder cover: one euclidean rhythm ring per track (computed in Rust, as fractions of the side).
+/// A point and size as fractions of a box, e.g. the bars of a small graph.
 export struct Dot {
     x: float,
     y: float,
@@ -1041,26 +1237,51 @@ export struct Dot {
     a: float,
 }
 
+/// A ring mark from `kitka::sigil`, as Path commands in a 100 x 100 box.
+export struct Sigil {
+    rings: string,
+    hits: string,
+    rests: string,
+}
+
+/// A Sigil centred in the box, as big as its shorter side: a placeholder cover, say. Three paths
+/// however many names it has.
 export component RingCover inherits Rectangle {
-    in property <[float]> rings;
-    in property <[Dot]> dots;
+    in property <Sigil> sigil;
     in property <color> tint;
     property <length> s: Math.min(self.width, self.height);
-    for r in root.rings: Rectangle {
-        width: root.s * r;
-        height: self.width;
-        x: (root.width - self.width) / 2;
-        y: (root.height - self.height) / 2;
-        border-radius: self.width / 2;
-        border-width: 1px;
-        border-color: root.tint.with-alpha(0.15);
+    Path {
+        x: (root.width - root.s) / 2;
+        y: (root.height - root.s) / 2;
+        width: root.s;
+        height: root.s;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fit: fill;
+        stroke: root.tint.with-alpha(0.15);
+        stroke-width: 1px;
+        commands: root.sigil.rings;
     }
-    for d in root.dots: Rectangle {
-        width: Math.max(1px, root.s * d.d);
-        height: self.width;
-        x: root.width / 2 + root.s * d.x - self.width / 2;
-        y: root.height / 2 + root.s * d.y - self.height / 2;
-        border-radius: self.width / 2;
-        background: root.tint.with-alpha(d.a);
+    Path {
+        x: (root.width - root.s) / 2;
+        y: (root.height - root.s) / 2;
+        width: root.s;
+        height: root.s;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fit: fill;
+        fill: root.tint.with-alpha(0.3);
+        commands: root.sigil.rests;
+    }
+    Path {
+        x: (root.width - root.s) / 2;
+        y: (root.height - root.s) / 2;
+        width: root.s;
+        height: root.s;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fit: fill;
+        fill: root.tint;
+        commands: root.sigil.hits;
     }
 }

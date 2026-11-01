@@ -1,9 +1,11 @@
 //! The shared look: `ui/theme.slint` and `ui/widgets.slint`. An app's `build.rs` passes
 //! [`library_paths`] to `slint_build`, and its screens import `@kitka/theme.slint` and
 //! `@kitka/widgets.slint`. At run time, [`accent`] turns an app's color into one the theme can
-//! draw text in.
+//! draw text in, and [`sigil`] draws the ring mark `RingCover` shows.
 
 use std::collections::HashMap;
+use std::f64::consts::PI;
+use std::fmt::Write;
 use std::path::PathBuf;
 
 /// The `@kitka` import path for `slint_build::CompilerConfiguration::with_library_paths`.
@@ -40,6 +42,61 @@ fn luminance(c: [u8; 3]) -> f64 {
     0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
 }
 
+/// A ring mark as `Path` commands in a 100 x 100 box, for `RingCover`'s `Sigil`: the rings to
+/// stroke, then the hits and the rests to fill.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Sigil {
+    pub rings: String,
+    pub hits: String,
+    pub rests: String,
+}
+
+/// One euclidean rhythm ring per name (up to 12), each with as many steps as there are names. A
+/// name picks how many hits its ring gets; its position rotates the ring.
+pub fn sigil<'a>(names: impl ExactSizeIterator<Item = &'a str>) -> Sigil {
+    let names: Vec<&str> = names.collect();
+    let steps = names.len();
+    let mut out = Sigil::default();
+    if steps == 0 {
+        return out;
+    }
+    let rings = steps.min(12);
+    let outer = 43.0;
+    let gap = outer * 0.8 / rings as f64;
+    for (r, name) in names.iter().take(rings).enumerate() {
+        let radius = outer - r as f64 * gap;
+        // Keep the whole hit inside the box, including sparse one/two-name rings.
+        let dot = (gap * 0.32).min(radius * PI / steps as f64 * 0.4).min(48.0 - radius);
+        let hits = 1 + (fnv1a(name) % (steps / 2).max(1) as u32) as usize;
+        circle(&mut out.rings, 50.0, 50.0, radius);
+        for i in 0..steps {
+            let angle = 2.0 * PI * (i + r) as f64 / steps as f64 - PI / 2.0;
+            let (x, y) = (50.0 + radius * angle.cos(), 50.0 + radius * angle.sin());
+            if (i * hits) % steps < hits {
+                circle(&mut out.hits, x, y, dot);
+            } else {
+                circle(&mut out.rests, x, y, dot * 0.4);
+            }
+        }
+    }
+    out
+}
+
+fn circle(path: &mut String, x: f64, y: f64, r: f64) {
+    let _ = write!(
+        path,
+        "M {:.2} {y:.2} A {r:.2} {r:.2} 0 1 0 {:.2} {y:.2} A {r:.2} {r:.2} 0 1 0 {:.2} {y:.2} Z ",
+        x - r,
+        x + r,
+        x - r
+    );
+}
+
+/// FNV-1a over UTF-16 units. Changing it would change every ring mark already drawn.
+fn fnv1a(s: &str) -> u32 {
+    s.encode_utf16().fold(2166136261u32, |h, c| (h ^ c as u32).wrapping_mul(16777619))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,5 +126,20 @@ mod tests {
     fn contrast_spans_one_to_twenty_one() {
         assert!((contrast([0; 3], [255; 3]) - 21.0).abs() < 1e-9);
         assert_eq!(contrast([9, 9, 9], [9, 9, 9]), 1.0);
+    }
+
+    #[test]
+    fn sigil_has_one_ring_per_name_up_to_twelve() {
+        let rings = |n: usize| {
+            let names: Vec<String> = (0..n).map(|i| i.to_string()).collect();
+            sigil(names.iter().map(String::as_str)).rings.matches('M').count()
+        };
+        assert_eq!((rings(0), rings(3), rings(20)), (0, 3, 12));
+    }
+
+    #[test]
+    fn sigil_steps_are_hits_or_rests() {
+        let s = sigil(["a", "b", "c"].into_iter());
+        assert_eq!(s.hits.matches('M').count() + s.rests.matches('M').count(), 9);
     }
 }
