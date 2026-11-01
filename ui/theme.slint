@@ -1,6 +1,6 @@
-// The visual language: near-black ground, one accent color, monospace everything. Borders are
-// solid throughout; dashed is reserved for empty fields you can type in, so "editable" reads at
-// a glance.
+// The visual language (Kontaktka): one accent color on the ground, monospace, and round things you
+// press. What belongs together touches. The outline says the state: solid is a value, dashed is
+// an empty field you can type in, and ⌜ ⌟ mark what's current.
 
 export global Theme {
     in property <bool> light;
@@ -34,4 +34,11 @@ export global Theme {
     out property <length> fs-additional: 13px * scale;
     out property <length> fs-head: 20px * scale;
     out property <length> fs-head-lg: 22px * scale;
+
+    /// The gap between beads, which their necks bridge.
+    out property <length> bead-gap: 10px;
+    /// Corner radius of things that hold others: dialogs, panels, the player.
+    out property <length> round-box: 18px;
+    /// Corner radius of popups, tooltips and text areas.
+    out property <length> round-pop: 12px;
 }

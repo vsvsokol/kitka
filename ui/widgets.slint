@@ -1,7 +1,12 @@
 // The app's own controls, in its visual language (see theme.slint). Slint's standard widgets have
-// their own look, so only plain elements are used here.
+// their own look, so only plain elements are used here. Things you press are round: pills, and
+// circles for icon buttons. Controls that belong together touch: a long row is one pill split by
+// walls (Films), a short group is beads joined by necks (Btn's `bead`).
 
 import { Theme } from "theme.slint";
+
+/// A Btn's place in a Films strip.
+export enum Join { none, first, middle, last }
 
 /// Tooltip body in the app's style.
 export component TipBox inherits Rectangle {
@@ -9,9 +14,10 @@ export component TipBox inherits Rectangle {
     background: Theme.bg;
     border-width: 1px;
     border-color: Theme.accent;
+    border-radius: Theme.round-pop;
     HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
+        padding-left: 10px;
+        padding-right: 10px;
         padding-top: 4px;
         padding-bottom: 4px;
         Text {
@@ -22,50 +28,120 @@ export component TipBox inherits Rectangle {
     }
 }
 
-/// A 1px dashed outline. Slint has no dashed borders, so it is drawn as short segments.
+/// A 1px dashed outline. Slint has no dashed strokes, so straight runs are short rectangles. The
+/// corners within `radius` stay open, except on a pill (or circle), whose round ends are dashed
+/// arcs.
 export component Dashed inherits Rectangle {
     in property <color> stroke;
-    property <int> nx: Math.max(1, Math.floor(self.width / 7px));
-    property <int> ny: Math.max(1, Math.floor(self.height / 7px));
+    in property <length> radius;
+    property <length> r: Math.min(root.radius, root.height / 2, root.width / 2);
+    property <bool> pill: root.r > 0px && root.r * 2 >= root.height;
+    property <length> run-x: root.width - 2 * root.r;
+    property <length> run-y: root.height - 2 * root.r;
+    property <int> nx: root.run-x <= 0px ? 0 : Math.max(1, Math.floor(root.run-x / 7px));
+    property <int> ny: root.run-y <= 0px ? 0 : Math.max(1, Math.floor(root.run-y / 7px));
     for i in root.nx: Rectangle {
-        x: i * 7px;
+        x: root.r + i * 7px;
         y: 0px;
-        width: Math.min(4px, root.width - self.x);
+        width: Math.min(4px, root.r + root.run-x - self.x);
         height: 1px;
         background: root.stroke;
     }
     for i in root.nx: Rectangle {
-        x: i * 7px;
+        x: root.r + i * 7px;
         y: root.height - 1px;
-        width: Math.min(4px, root.width - self.x);
+        width: Math.min(4px, root.r + root.run-x - self.x);
         height: 1px;
         background: root.stroke;
     }
     for i in root.ny: Rectangle {
         x: 0px;
-        y: i * 7px;
+        y: root.r + i * 7px;
         width: 1px;
-        height: Math.min(4px, root.height - self.y);
+        height: Math.min(4px, root.r + root.run-y - self.y);
         background: root.stroke;
     }
     for i in root.ny: Rectangle {
         x: root.width - 1px;
-        y: i * 7px;
+        y: root.r + i * 7px;
         width: 1px;
-        height: Math.min(4px, root.height - self.y);
+        height: Math.min(4px, root.r + root.run-y - self.y);
         background: root.stroke;
+    }
+    // Five dashes on each half circle, in a 50 x 100 box that's stretched to the end's size.
+    if root.pill: Path {
+        x: 0px;
+        width: root.r;
+        height: root.height;
+        viewbox-width: 50;
+        viewbox-height: 100;
+        fit: fill;
+        commands: "M 42.26 1.11 A 49.5 49.5 0 0 0 27.53 5.9 M 15 15 A 49.5 49.5 0 0 0 5.9 27.53 M 1.11 42.26 A 49.5 49.5 0 0 0 1.11 57.74 M 5.9 72.47 A 49.5 49.5 0 0 0 15 85 M 27.53 94.1 A 49.5 49.5 0 0 0 42.26 98.89";
+        stroke: root.stroke;
+        stroke-width: 1px;
+    }
+    if root.pill: Path {
+        x: root.width - root.r;
+        width: root.r;
+        height: root.height;
+        viewbox-width: 50;
+        viewbox-height: 100;
+        fit: fill;
+        commands: "M 7.74 1.11 A 49.5 49.5 0 0 1 22.47 5.9 M 35 15 A 49.5 49.5 0 0 1 44.1 27.53 M 48.89 42.26 A 49.5 49.5 0 0 1 48.89 57.74 M 44.1 72.47 A 49.5 49.5 0 0 1 35 85 M 22.47 94.1 A 49.5 49.5 0 0 1 7.74 98.89";
+        stroke: root.stroke;
+        stroke-width: 1px;
     }
 }
 
-/// Squashes while held down and springs back when let go, like the bin in Albumka.
+/// Squashes while held down and springs back when let go. Inside a Films strip only the height
+/// moves, so the walls stay where they are.
 component Squashy inherits Rectangle {
     in-out property <bool> squashed;
+    in property <bool> keep-width;
     transform-origin: { x: self.width / 2, y: self.height / 2 };
-    transform-scale-x: root.squashed ? 1.06 : 1;
+    transform-scale-x: root.squashed && !root.keep-width ? 1.06 : 1;
     transform-scale-y: root.squashed ? 0.84 : 1;
     animate transform-scale-x, transform-scale-y {
         duration: root.squashed ? 70ms : 550ms;
         easing: root.squashed ? ease-out : ease-out-elastic;
+    }
+}
+
+/// The small concave web where a wall meets the outline, like the border where soap films meet.
+component Fillet inherits Path {
+    /// Which side of the wall, and which end.
+    in property <bool> left;
+    in property <bool> top;
+    width: 4px;
+    height: 4px;
+    viewbox-width: 4;
+    viewbox-height: 4;
+    fill: Theme.line;
+    commands: root.top ? (root.left ? "M 0 0 A 4 4 0 0 1 4 4 L 4 0 Z" : "M 4 0 A 4 4 0 0 0 0 4 L 0 0 Z") : (root.left ? "M 0 4 A 4 4 0 0 0 4 0 L 4 4 Z" : "M 4 4 A 4 4 0 0 1 0 0 L 0 4 Z");
+}
+
+/// The wall between two cells of a Films strip, with a fillet on each side where it meets the
+/// outline.
+export component Wall inherits Rectangle {
+    width: 1px;
+    background: Theme.line;
+    Fillet { x: -4px; y: 1px; left: true; top: true; }
+    Fillet { x: 1px; y: 1px; top: true; }
+    Fillet { x: -4px; y: parent.height - 5px; left: true; }
+    Fillet { x: 1px; y: parent.height - 5px; }
+}
+
+/// Controls that act on the same thing, as one pill split by walls: put a Wall between cells and
+/// give each Btn its `join`. For long rows; a group of two or three uses beads instead.
+export component Films inherits Rectangle {
+    border-radius: self.height / 2;
+    HorizontalLayout {
+        @children
+    }
+    Rectangle {
+        border-radius: self.height / 2;
+        border-width: 1px;
+        border-color: Theme.accent;
     }
 }
 
@@ -114,6 +190,10 @@ export component Btn inherits Squashy {
     in property <string> family;
     /// Reachable with Tab (see KeyFocus).
     in property <bool> tab-stop;
+    /// Its place in a Films strip; `none` is a pill of its own.
+    in property <Join> join: Join.none;
+    /// Joined by a neck to the pill before it, which sits `Theme.bead-gap` to the left.
+    in property <bool> bead;
     callback clicked();
 
     accessible-role: button;
@@ -126,10 +206,18 @@ export component Btn inherits Squashy {
     property <color> fg: root.danger ? Theme.danger : Theme.accent;
     property <bool> hot: touch.has-hover && root.enabled;
     squashed: touch.pressed && root.enabled;
+    keep-width: root.join != Join.none;
     min-height: root.icon ? 30px : 0px;
     min-width: root.icon ? 30px : 0px;
-    background: root.hot ? Theme.hover-wash : Theme.bg;
-    border-width: 1px;
+    // Round at the ends it doesn't share with a neighbour.
+    property <length> cap-left: root.join == Join.none || root.join == Join.first ? root.height / 2 : 0px;
+    property <length> cap-right: root.join == Join.none || root.join == Join.last ? root.height / 2 : 0px;
+    border-top-left-radius: root.cap-left;
+    border-bottom-left-radius: root.cap-left;
+    border-top-right-radius: root.cap-right;
+    border-bottom-right-radius: root.cap-right;
+    background: root.hot ? Theme.hover-wash : root.join == Join.none ? Theme.bg : transparent;
+    border-width: root.join == Join.none ? 1px : 0px;
     // A pulse while hovered, on the colors: pulsing the opacity would draw the button through a
     // layer, where the GPU renderer places the text a pixel or two off. It starts on the beat the
     // pointer arrives and stops after two, so a resting pointer doesn't keep the window redrawing.
@@ -149,9 +237,45 @@ export component Btn inherits Squashy {
     opacity: root.enabled ? 1 : 0.3;
     animate background { duration: 300ms; }
 
+    // The neck to the bead on the left: a waist between the two round ends, from the same curve
+    // as two drops of water about to touch. Filled with the ground first, so the two outlines
+    // open into each other, then the waist's two edges are drawn.
+    if root.bead: Rectangle {
+        property <float> r: root.height / 2px;
+        property <float> g: Theme.bead-gap / 1px;
+        property <float> k: self.r * 0.7071;
+        property <float> c: -self.g - self.r;
+        property <float> h: self.r * Math.min(1.2, (self.g + 2 * self.r - 2 * self.k) / (2 * self.r)) * 0.7071;
+        property <string> lower: "M \{self.c + self.k} \{self.r + self.k} C \{self.c + self.k + self.h} \{self.r + self.k - self.h} \{self.r - self.k - self.h} \{self.r + self.k - self.h} \{self.r - self.k} \{self.r + self.k}";
+        property <string> upper: "\{self.r - self.k} \{self.r - self.k} C \{self.r - self.k - self.h} \{self.r - self.k + self.h} \{self.c + self.k + self.h} \{self.r - self.k + self.h} \{self.c + self.k} \{self.r - self.k}";
+        Path {
+            x: (parent.c - parent.r) * 1px;
+            width: (parent.g + 3 * parent.r) * 1px;
+            height: root.height;
+            viewbox-x: parent.c - parent.r;
+            viewbox-width: parent.g + 3 * parent.r;
+            viewbox-height: 2 * parent.r;
+            fit: fill;
+            commands: parent.lower + " L " + parent.upper + " Z";
+            fill: Theme.bg;
+        }
+        Path {
+            x: (parent.c - parent.r) * 1px;
+            width: (parent.g + 3 * parent.r) * 1px;
+            height: root.height;
+            viewbox-x: parent.c - parent.r;
+            viewbox-width: parent.g + 3 * parent.r;
+            viewbox-height: 2 * parent.r;
+            fit: fill;
+            commands: parent.lower + " M " + parent.upper;
+            stroke: root.fg;
+            stroke-width: 1px;
+        }
+    }
+
     HorizontalLayout {
-        padding-left: root.icon ? 7px : 10px;
-        padding-right: root.icon ? 7px : 10px;
+        padding-left: root.icon ? 7px : 14px;
+        padding-right: root.icon ? 7px : 14px;
         padding-top: root.icon ? 0px : 5px;
         padding-bottom: root.icon ? 0px : 5px;
         Text {
@@ -161,6 +285,8 @@ export component Btn inherits Squashy {
             font-size: Theme.fs-main;
             font-weight: root.primary ? 700 : 400;
             letter-spacing: root.icon ? 0px : 1px;
+            // A label is never cut; a row of beads that can't fit has to wrap instead.
+            min-width: self.preferred-width;
             horizontal-alignment: center;
             vertical-alignment: center;
             accessible-role: none;
@@ -270,7 +396,7 @@ export component TabBtn inherits Squashy {
     }
 }
 
-/// One-line text field. Dashed while empty ("you can type here"), solid once filled.
+/// One-line text field, a pill. Dashed while empty ("you can type here"), solid once filled.
 export component Field inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder;
@@ -302,16 +428,26 @@ export component Field inherits Rectangle {
     property <bool> framed: root.show-frame || root.focused;
     property <color> frame: root.frame-color != transparent ? root.frame-color : root.focused ? Theme.accent : Theme.line;
     opacity: root.enabled ? 1 : 0.4;
+    border-radius: self.height / 2;
     border-width: root.framed && root.filled ? 1px : 0px;
     border-color: root.frame;
 
     if root.framed && !root.filled: Dashed {
+        radius: root.height / 2;
         stroke: root.focused && root.frame-color == transparent ? Theme.accent : root.frame;
     }
 
+    // Behind the input: a click on the frame, prefix or padding focuses it, while clicks on the
+    // input itself keep their caret and selection.
+    TouchArea {
+        enabled: root.enabled && !root.read-only;
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+
     HorizontalLayout {
-        padding-left: root.small ? 6px : 7px;
-        padding-right: root.small ? 6px : 7px;
+        padding-left: root.small ? 10px : 12px;
+        padding-right: root.small ? 10px : 12px;
         padding-top: root.small ? 3px : 5px;
         padding-bottom: root.small ? 3px : 5px;
         spacing: 6px;
@@ -382,13 +518,23 @@ export component TextArea inherits Rectangle {
     callback edited(string);
 
     property <bool> filled: root.text != "";
+    border-radius: Theme.round-pop;
     border-width: root.filled || input.has-focus ? 1px : 0px;
     border-color: input.has-focus ? Theme.accent : Theme.line;
-    if !root.filled && !input.has-focus: Dashed { stroke: Theme.line; }
+    if !root.filled && !input.has-focus: Dashed {
+        radius: Theme.round-pop;
+        stroke: Theme.line;
+    }
+
+    TouchArea {
+        enabled: !root.read-only;
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
 
     Text {
-        x: 7px;
-        y: 5px;
+        x: 12px;
+        y: 7px;
         text: ":::";
         color: Theme.muted;
         font-size: Theme.fs-secondary;
@@ -396,10 +542,10 @@ export component TextArea inherits Rectangle {
     }
 
     flick := Flickable {
-        x: 40px;
-        y: 5px;
-        width: parent.width - 47px;
-        height: parent.height - 10px;
+        x: 44px;
+        y: 7px;
+        width: parent.width - 56px;
+        height: parent.height - 14px;
         content-height: Math.max(self.height, input.preferred-height);
         input := TextInput {
             width: parent.width;
@@ -444,9 +590,10 @@ export component Chip inherits Rectangle {
     in property <string> text;
     in property <color> tint;
     background: root.tint;
+    border-radius: self.height / 2;
     HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 6px;
+        padding-left: 8px;
+        padding-right: 8px;
         padding-top: 1px;
         padding-bottom: 1px;
         Text {
@@ -520,12 +667,15 @@ export component Badge inherits Rectangle {
     in property <int> kind;
     in property <string> tip;
     in property <TextHorizontalAlignment> align: left;
+    /// Off inside a Films strip, whose walls frame it.
+    in property <bool> framed: true;
     property <color> c: root.kind == 1 ? Theme.accent : root.kind == 2 ? Theme.danger : Theme.muted;
-    border-width: 1px;
+    border-radius: self.height / 2;
+    border-width: root.framed ? 1px : 0px;
     border-color: root.kind == 0 ? Theme.line : root.c;
     HorizontalLayout {
-        padding-left: 5px;
-        padding-right: 5px;
+        padding-left: 8px;
+        padding-right: 8px;
         padding-top: 1px;
         padding-bottom: 1px;
         Text {
@@ -571,6 +721,7 @@ export component Check inherits Rectangle {
             Rectangle {
                 width: 16px;
                 height: 16px;
+                border-radius: 8px;
                 border-width: 1px;
                 border-color: Theme.accent;
                 background: root.checked ? Theme.accent : transparent;
@@ -719,8 +870,9 @@ export component Slider inherits Rectangle {
             }
             Rectangle {
                 x: parent.width * root.t - self.width / 2;
-                width: 8px;
+                width: 12px;
                 height: 12px;
+                border-radius: 6px;
                 background: touch.has-hover || touch.pressed ? Theme.text : Theme.accent;
             }
             touch := TouchArea {
@@ -787,7 +939,8 @@ export component DialogFoot inherits Rectangle {
         padding-right: 16px;
         padding-top: 12px;
         padding-bottom: 12px;
-        spacing: 8px;
+        // Beads: the buttons after the first set `bead`.
+        spacing: Theme.bead-gap;
         alignment: end;
         @children
     }
@@ -812,6 +965,7 @@ export component Swatch inherits Rectangle {
     accessible-action-default => { root.clicked(); }
     width: 26px;
     height: 26px;
+    border-radius: 13px;
     border-width: 1px;
     border-color: root.on ? Theme.text : touch.has-hover ? Theme.muted : root.frame;
     Rectangle {
@@ -819,6 +973,7 @@ export component Swatch inherits Rectangle {
         y: 3px;
         width: parent.width - 6px;
         height: parent.height - 6px;
+        border-radius: self.width / 2;
         background: root.fill;
     }
     if root.is-wheel: Image {
