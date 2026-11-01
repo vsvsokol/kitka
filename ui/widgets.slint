@@ -7,6 +7,18 @@
 
 import { Theme } from "theme.slint";
 
+/// Drawn icons for Btn's `shape`, in a 16 x 16 box. Characters like ▶, ⏏ and ↩ come out as color
+/// emoji on Windows, so the app draws its own.
+export global Icon {
+    out property <string> play: "M 4 2 L 14 8 L 4 14 Z";
+    out property <string> pause: "M 3 2 L 6.5 2 L 6.5 14 L 3 14 Z M 9.5 2 L 13 2 L 13 14 L 9.5 14 Z";
+    out property <string> previous: "M 2 2 L 4 2 L 4 14 L 2 14 Z M 14 2 L 14 14 L 5 8 Z";
+    out property <string> next: "M 12 2 L 14 2 L 14 14 L 12 14 Z M 2 2 L 11 8 L 2 14 Z";
+    out property <string> back: "M 7 2 L 2 6 L 7 10 L 7 7 L 10 7 A 2.5 2.5 0 0 1 10 12 L 6 12 L 6 14 L 10 14 A 4.5 4.5 0 0 0 10 5 L 7 5 Z";
+    out property <string> eject: "M 8 2 L 14 9 L 2 9 Z M 2 11 L 14 11 L 14 14 L 2 14 Z";
+    out property <string> note: "M 2 12 A 3 2.3 0 1 0 8 12 A 3 2.3 0 1 0 2 12 Z M 7 11 L 8.3 11 L 8.3 2 L 7 2 Z M 8.3 2 C 9 5 13 5.5 12 9.5 C 11.5 7 10 6.3 8.3 6 Z";
+}
+
 /// A Btn's place in a Films strip.
 export enum Join { none, first, middle, last }
 
@@ -286,6 +298,8 @@ export component Btn inherits Squashy {
     in property <Join> join: Join.none;
     /// Joined by a neck to the pill before it, which sits `Theme.bead-gap` to the left.
     in property <bool> bead;
+    /// One of `Icon`'s shapes, drawn instead of the text.
+    in property <string> shape;
     callback clicked();
 
     accessible-role: button;
@@ -371,7 +385,7 @@ export component Btn inherits Squashy {
         padding-top: root.icon ? 0px : 5px;
         padding-bottom: root.icon ? 0px : 5px;
         Text {
-            text: root.text;
+            text: root.shape == "" ? root.text : "";
             color: (root.hot && !root.danger ? Theme.text : root.fg).with-alpha(root.pulse);
             font-family: root.family;
             font-size: Theme.fs-main;
@@ -383,6 +397,18 @@ export component Btn inherits Squashy {
             vertical-alignment: center;
             accessible-role: none;
         }
+    }
+
+    if root.shape != "": Path {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: 12px;
+        height: 12px;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fit: fill;
+        fill: (root.hot && !root.danger ? Theme.text : root.fg).with-alpha(root.pulse);
+        commands: root.shape;
     }
 
     touch := TouchArea {
@@ -978,7 +1004,7 @@ export component Slider inherits Rectangle {
         }
     }
     function set(x: length) {
-        root.set-value(root.minimum + Math.clamp(x / track.width, 0, 1) * (root.maximum - root.minimum));
+        root.set-value(root.minimum + Math.clamp((x - 6px) / (track.width - 12px), 0, 1) * (root.maximum - root.minimum));
     }
 
     accessible-role: slider;
@@ -1006,22 +1032,26 @@ export component Slider inherits Rectangle {
                 accessible-role: none;
             }
         }
+        // The line is inset by the head's radius, so the head stays inside at both ends.
         track := Rectangle {
             height: 14px;
             Rectangle {
+                x: 6px;
                 y: parent.height / 2;
+                width: parent.width - 12px;
                 height: 1px;
                 background: Theme.line;
             }
             Rectangle {
-                x: 0px;
+                x: 6px;
                 y: parent.height / 2;
-                width: parent.width * root.t;
+                width: (parent.width - 12px) * root.t;
                 height: 1px;
                 background: Theme.accent;
             }
             Rectangle {
-                x: parent.width * root.t - self.width / 2;
+                x: (parent.width - 12px) * root.t;
+                y: 1px;
                 width: 12px;
                 height: 12px;
                 border-radius: 6px;
@@ -1076,6 +1106,26 @@ export component DialogHead inherits Rectangle {
         y: parent.height - 1px;
         height: 1px;
         background: Theme.line;
+    }
+}
+
+/// Fades a scrolled area's edges into the ground where there's more to scroll to. Lay it over
+/// the Flickable at the same size; it doesn't take clicks.
+export component EdgeFade inherits Rectangle {
+    in property <bool> above;
+    in property <bool> below;
+    Rectangle {
+        height: 28px;
+        background: @linear-gradient(180deg, Theme.bg 0%, Theme.bg.with-alpha(0) 100%);
+        opacity: root.above ? 1 : 0;
+        animate opacity { duration: 150ms; }
+    }
+    Rectangle {
+        y: root.height - self.height;
+        height: 28px;
+        background: @linear-gradient(0deg, Theme.bg 0%, Theme.bg.with-alpha(0) 100%);
+        opacity: root.below ? 1 : 0;
+        animate opacity { duration: 150ms; }
     }
 }
 
